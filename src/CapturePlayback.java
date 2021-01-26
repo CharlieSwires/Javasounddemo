@@ -52,6 +52,7 @@ import java.awt.font.LineBreakMeasurer;
 import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
 import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -128,7 +129,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
     AudioInputStream audioInputStream;
     SamplingGraph samplingGraph;
 
-    JButton playB, captB, pausB, loadB;
+    JButton playB, captB, pausB, loadB, fftB;
     JButton auB, aiffB, waveB;
     JTextField textField;
 
@@ -147,6 +148,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
     long startTime;
     Sequence sequence;
     Piano piano;
+    boolean fft = false;
 
 
     public CapturePlayback() {
@@ -169,6 +171,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         captB = addButton("Record", buttonsPanel, true);
         pausB = addButton("Pause", buttonsPanel, false);
         loadB = addButton("Load...", buttonsPanel, true);
+        fftB = addButton("Time", buttonsPanel, true);
         p2.add(buttonsPanel);
 
         JPanel samplingPanel = new JPanel(new BorderLayout());
@@ -522,7 +525,10 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                 ex.printStackTrace();
             } catch (Exception ex) { 
                 ex.printStackTrace();
-            }
+            } 
+        }else if (obj.equals(fftB)) {
+          fft = !fft;
+          fftB.setText(fft ? "FFT" : "Time");
         }
     }
 
@@ -1110,7 +1116,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                 g2.setFont(font12);
                 g2.drawString("File: " + fileName + "  Length: " + String.valueOf(duration) + "  Position: " + String.valueOf(seconds), 3, h-4);
 
-                if (audioInputStream != null) {
+                if (audioInputStream != null && !fft) {
                     // .. render sampling graph ..
                     g2.setColor(jfcBlue);
                     for (int i = 1; i < lines.size(); i++) {
@@ -1123,6 +1129,57 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                         g2.setColor(pink);
                         g2.setStroke(new BasicStroke(3));
                         g2.draw(new Line2D.Double(loc, 0, loc, h-INFOPAD-2));
+                    }
+                } else if (audioInputStream != null && fft) {
+                    int linesStart = 0;
+                    int linesEnd = lines.size();
+                    for (int i = 0; i < linesEnd; i++) {
+                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() != 23.0) {
+                            linesStart = i;
+                            break;
+                        }
+                     }
+                    for (int i = lines.size()-1; i > linesStart; i--) {
+                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() != 23.0) {
+                            linesEnd = i;
+                            break;
+                        }
+                     }
+                    int fftSize=(int)Math.pow(2,(int)(Math.log10((double)(linesEnd - linesStart))/Math.log10(2.0))+1);
+                    Complex[] x = new Complex[fftSize];
+                    double newDuration = fftSize / lines.size();
+                    for (int i = 0; i < fftSize; i++) {
+                        if (i >= linesEnd) {
+                            x[i] = new Complex((double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getY()-23.0,
+                                    newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
+                        } else {
+                            x[i] = new Complex((double)(((Line2D.Double) lines.get(linesStart)).getP1()).getY()-23.0,
+                                    newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
+                            //System.out.println(x[i].toString()); 
+ 
+                        }
+                    }
+                    Complex[] y = FFT.fft(x);
+                    Line2D.Double[] fftLines = new Line2D.Double[fftSize];
+ 
+                    double max = 0.0;
+                    for (int i = 0; i < fftSize; i++) {
+                      if (max < y[i].abs()) {
+                          max = y[i].abs();
+                      }
+                    }
+
+                    for (int i = 1; i < fftSize-2; i++) {
+  
+                            fftLines[i] = new Line2D.Double(w*(i+1)/fftSize,(-h+INFOPAD+2)*y[i+1].abs()/max+23,
+                                    w*(i+2)/fftSize,(-h+INFOPAD+2)*y[i+2].abs()/max+23);
+                           System.out.println("x="+w*(i+1)/fftSize+" y="+((-h+INFOPAD+2))*y[i+1].abs()/max+23); 
+                        
+                    }
+                     // .. render sampling graph ..
+                    g2.setColor(Color.RED);
+                    for (int i = 1; i < fftSize-2; i++) {
+                        g2.draw((Line2D) fftLines[i]);
                     }
                 }
             }

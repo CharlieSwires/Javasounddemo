@@ -29,18 +29,71 @@
  */
 
 
-import java.awt.*;
-import java.awt.event.*;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridLayout;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.font.FontRenderContext;
+import java.awt.font.LineBreakMeasurer;
+import java.awt.font.TextAttribute;
+import java.awt.font.TextLayout;
 import java.awt.geom.Line2D;
-import javax.swing.*;
-import javax.swing.event.*;
-import javax.swing.border.*;
-import java.util.Vector;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.text.AttributedCharacterIterator;
+import java.text.AttributedString;
 import java.util.Enumeration;
-import java.io.*;
-import javax.sound.sampled.*;
-import java.awt.font.*;
-import java.text.*;
+import java.util.Vector;
+
+import javax.sound.midi.MidiChannel;
+import javax.sound.midi.MidiEvent;
+import javax.sound.midi.Sequence;
+import javax.sound.midi.ShortMessage;
+import javax.sound.midi.Track;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.SourceDataLine;
+import javax.sound.sampled.TargetDataLine;
+import javax.swing.AbstractButton;
+import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSlider;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.JToggleButton;
+import javax.swing.border.BevelBorder;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.SoftBevelBorder;
+import javax.swing.border.TitledBorder;
+
+
 
 
 
@@ -57,6 +110,16 @@ import java.text.*;
 public class CapturePlayback extends JPanel implements ActionListener, ControlContext {
 
     final int bufSize = 16384;
+    final Color jfcBlue = new Color(204, 204, 255);
+    final Color pink = new Color(255, 175, 175);
+    boolean record;
+    final int PROGRAM = 192;
+    final int NOTEON = 144;
+    final int NOTEOFF = 128;
+    final int SUSTAIN = 64;
+    final int REVERB = 91;
+    final int ON = 0, OFF = 1;
+    JTable table;
 
     FormatControls formatControls = new FormatControls();
     Capture capture = new Capture();
@@ -74,7 +137,16 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
     double duration, seconds;
     File file;
     Vector lines = new Vector();
-
+    Vector keys = new Vector();
+    Vector whiteKeys = new Vector();
+    ChannelData cc;    // current channel
+    JCheckBox mouseOverCB = new JCheckBox("mouseOver", true);
+    JSlider veloS, presS, bendS, revbS;
+    JCheckBox soloCB, monoCB, muteCB, sustCB; 
+    Track track;
+    long startTime;
+    Sequence sequence;
+    Piano piano;
 
 
     public CapturePlayback() {
@@ -121,11 +193,217 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         savePanel.add(saveBpanel);
 
         p2.add(savePanel);
+        p2.add(piano = new Piano());
 
         p1.add(p2);
         add(p1);
     }
+    /**
+     * given 120 bpm:
+     *   (120 bpm) / (60 seconds per minute) = 2 beats per second
+     *   2 / 1000 beats per millisecond
+     *   (2 * resolution) ticks per second
+     *   (2 * resolution)/1000 ticks per millisecond, or 
+     *      (resolution / 500) ticks per millisecond
+     *   ticks = milliseconds * resolution / 500
+     */
+    public void createShortEvent(int type, int num) {
+        ShortMessage message = new ShortMessage();
+        try {
+            long millis = System.currentTimeMillis() - startTime;
+            long tick = millis * sequence.getResolution() / 500;
+            message.setMessage(type+cc.num, num, cc.velocity); 
+            MidiEvent event = new MidiEvent(message, tick);
+            track.add(event);
+        } catch (Exception ex) { ex.printStackTrace(); }
+    }
+    /**
+     * Stores MidiChannel information.
+     */
+    class ChannelData {
 
+        MidiChannel channel;
+        boolean solo, mono, mute, sustain;
+        int velocity, pressure, bend, reverb;
+        int row, col, num;
+ 
+        public ChannelData(MidiChannel channel, int num) {
+            this.channel = channel;
+            this.num = num;
+            velocity = pressure = bend = reverb = 64;
+        }
+
+        public void setComponentStates() {
+            table.setRowSelectionInterval(row, row);
+            table.setColumnSelectionInterval(col, col);
+
+            soloCB.setSelected(solo);
+            monoCB.setSelected(mono);
+            muteCB.setSelected(mute);
+            //sustCB.setSelected(sustain);
+
+            JSlider slider[] = { veloS, presS, bendS, revbS };
+            int v[] = { velocity, pressure, bend, reverb };
+            for (int i = 0; i < slider.length; i++) {
+                TitledBorder tb = (TitledBorder) slider[i].getBorder();
+                String s = tb.getTitle();
+                tb.setTitle(s.substring(0, s.indexOf('=')+1)+s.valueOf(v[i]));
+                slider[i].repaint();
+            }
+        }
+    } // End class ChannelData
+
+    /**
+     * Black and white keys or notes on the piano.
+     */
+    class Key extends Rectangle {
+        int noteState = OFF;
+        int kNum;
+        public Key(int x, int y, int width, int height, int num) {
+            super(x, y, width, height);
+            kNum = num;
+        }
+        public boolean isNoteOn() {
+            return noteState == ON;
+        }
+        public void on() {
+            setNoteState(ON);
+            cc.channel.noteOn(kNum, cc.velocity);
+            if (record) {
+                createShortEvent(NOTEON, kNum);
+            }
+        }
+        public void off() {
+            setNoteState(OFF);
+            cc.channel.noteOff(kNum, cc.velocity);
+            if (record) {
+                createShortEvent(NOTEOFF, kNum);
+            }
+        }
+        public void setNoteState(int state) {
+            noteState = state;
+        }
+    } // End class Key
+
+    /**
+     * Piano renders black & white keys and plays the notes for a MIDI 
+     * channel.  
+     */
+    class Piano extends JPanel implements MouseListener {
+
+        Vector blackKeys = new Vector();
+        Key prevKey;
+        final int kw = 16, kh = 80;
+
+
+        public Piano() {
+            setLayout(new BorderLayout());
+            setPreferredSize(new Dimension(42*kw, kh+1));
+            int transpose = 24;  
+            int whiteIDs[] = { 0, 2, 4, 5, 7, 9, 11 }; 
+          
+            for (int i = 0, x = 0; i < 6; i++) {
+                for (int j = 0; j < 7; j++, x += kw) {
+                    int keyNum = i * 12 + whiteIDs[j] + transpose;
+                    whiteKeys.add(new Key(x, 0, kw, kh, keyNum));
+                }
+            }
+            for (int i = 0, x = 0; i < 6; i++, x += kw) {
+                int keyNum = i * 12 + transpose;
+                blackKeys.add(new Key((x += kw)-4, 0, kw/2, kh/2, keyNum+1));
+                blackKeys.add(new Key((x += kw)-4, 0, kw/2, kh/2, keyNum+3));
+                x += kw;
+                blackKeys.add(new Key((x += kw)-4, 0, kw/2, kh/2, keyNum+6));
+                blackKeys.add(new Key((x += kw)-4, 0, kw/2, kh/2, keyNum+8));
+                blackKeys.add(new Key((x += kw)-4, 0, kw/2, kh/2, keyNum+10));
+            }
+            keys.addAll(blackKeys);
+            keys.addAll(whiteKeys);
+
+            addMouseMotionListener(new MouseMotionAdapter() {
+                public void mouseMoved(MouseEvent e) {
+                    if (mouseOverCB.isSelected()) {
+                        Key key = getKey(e.getPoint());
+                        if (prevKey != null && prevKey != key) {
+                            prevKey.off();
+                        } 
+                        if (key != null && prevKey != key) {
+                            key.on();
+                        }
+                        prevKey = key;
+                        repaint();
+                    }
+                }
+            });
+            addMouseListener(this);
+        }
+
+        public void mousePressed(MouseEvent e) { 
+            prevKey = getKey(e.getPoint());
+            if (prevKey != null) {
+                prevKey.on();
+                repaint();
+            }
+        }
+        public void mouseReleased(MouseEvent e) { 
+            if (prevKey != null) {
+                prevKey.off();
+                repaint();
+            }
+        }
+        public void mouseExited(MouseEvent e) { 
+            if (prevKey != null) {
+                prevKey.off();
+                repaint();
+                prevKey = null;
+            }
+        }
+        public void mouseClicked(MouseEvent e) { }
+        public void mouseEntered(MouseEvent e) { }
+
+
+        public Key getKey(Point point) {
+            for (int i = 0; i < keys.size(); i++) {
+                if (((Key) keys.get(i)).contains(point)) {
+                    return (Key) keys.get(i);
+                }
+            }
+            return null;
+        }
+
+        public void paint(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g;
+            Dimension d = getSize();
+
+            g2.setBackground(getBackground());
+            g2.clearRect(0, 0, d.width, d.height);
+
+            g2.setColor(Color.white);
+            g2.fillRect(0, 0, 42*kw, kh);
+
+            for (int i = 0; i < whiteKeys.size(); i++) {
+                Key key = (Key) whiteKeys.get(i);
+                if (key.isNoteOn()) {
+                    g2.setColor(record ? pink : jfcBlue);
+                    g2.fill(key);
+                }
+                g2.setColor(Color.black);
+                g2.draw(key);
+            }
+            for (int i = 0; i < blackKeys.size(); i++) {
+                Key key = (Key) blackKeys.get(i);
+                if (key.isNoteOn()) {
+                    g2.setColor(record ? pink : jfcBlue);
+                    g2.fill(key);
+                    g2.setColor(Color.black);
+                    g2.draw(key);
+                } else {
+                    g2.setColor(Color.black);
+                    g2.fill(key);
+                }
+            }
+        }
+    } // End class Piano
 
     public void open() { }
 
@@ -905,8 +1183,8 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         f.getContentPane().add("Center", capturePlayback);
         f.pack();
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int w = 720;
-        int h = 340;
+        int w = 960;
+        int h = 410;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);
         f.show();

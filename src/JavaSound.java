@@ -50,7 +50,7 @@ public class JavaSound extends JPanel implements ChangeListener, Runnable {
 
     Vector demos = new Vector(4);
     JTabbedPane tabPane = new JTabbedPane();
-    int width = 760, height = 500;
+    int width = 760, height = 550;
     int index;
 
 

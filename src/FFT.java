@@ -211,34 +211,37 @@ public class FFT {
     ***************************************************************************/
 
     public static void main(String[] args) { 
-        int n = Integer.parseInt(args[0]);
+        int n = (int)Math.pow(2.0,(int)(Math.log10(44100.0)/Math.log10(2.0))+1.0);
         Complex[] x = new Complex[n];
 
         // original data
         for (int i = 0; i < n; i++) {
-            x[i] = new Complex(i, 0);
+            x[i] = new Complex(10.0*Math.sin(50.0*i*2.0*Math.PI/44100.0)+
+                    30.0*Math.sin(3000.0*i*2.0*Math.PI/44100.0), i/44100.0);
         }
-        show(x, "x");
+        //show(x, "x");
 
         // FFT of original data
         Complex[] y = fft(x);
-        show(y, "y = fft(x)");
-
-        // FFT of original data
-        Complex[] y2 = dft(x);
-        show(y2, "y2 = dft(x)");
-
-        // take inverse FFT
-        Complex[] z = ifft(y);
-        show(z, "z = ifft(y)");
-
-        // circular convolution of x with itself
-        Complex[] c = cconvolve(x, x);
-        show(c, "c = cconvolve(x, x)");
-
-        // linear convolution of x with itself
-        Complex[] d = convolve(x, x);
-        show(d, "d = convolve(x, x)");
+        for (int i = 0; i < n; i++)
+            if(y[i].abs() > 2000.0)System.out.println("i="+i+" - ampl="+y[i].abs());
+//        show(y, "y = fft(x)");
+//
+//        // FFT of original data
+//        Complex[] y2 = dft(x);
+//        show(y2, "y2 = dft(x)");
+//
+//        // take inverse FFT
+//        Complex[] z = ifft(y);
+//        show(z, "z = ifft(y)");
+//
+//        // circular convolution of x with itself
+//        Complex[] c = cconvolve(x, x);
+//        show(c, "c = cconvolve(x, x)");
+//
+//        // linear convolution of x with itself
+//        Complex[] d = convolve(x, x);
+//        show(d, "d = convolve(x, x)");
     }
 
 }

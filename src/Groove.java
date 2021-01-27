@@ -425,7 +425,7 @@ public class Groove extends JPanel implements ActionListener, ControlContext, Me
         f.getContentPane().add("Center", groove);
         f.pack();
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int w = 640;
+        int w = 1000;
         int h = 440;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);

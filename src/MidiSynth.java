@@ -821,7 +821,7 @@ public class MidiSynth extends JPanel implements ControlContext {
         f.getContentPane().add("Center", midiSynth);
         f.pack();
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int w = 760;
+        int w = 1000;
         int h = 470;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);

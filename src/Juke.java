@@ -1010,7 +1010,7 @@ public class Juke extends JPanel implements Runnable, LineListener, MetaEventLis
         f.getContentPane().add("Center", juke);
         f.pack();
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int w = 750;
+        int w = 1000;
         int h = 340;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);

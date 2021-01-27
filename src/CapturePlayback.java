@@ -1162,12 +1162,12 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                     Complex[] y = FFT.fft(x);
                     Line2D.Double[] fftLines = new Line2D.Double[fftSize];
  
-                    double max = 0.0;
-                    for (int i = 0; i < fftSize; i++) {
-                      if (max < y[i].abs()) {
-                          max = y[i].abs();
-                      }
-                    }
+                    double max = 1000.0;
+//                    for (int i = 0; i < fftSize; i++) {
+//                      if (max < y[i].abs()) {
+//                          max = y[i].abs();
+//                      }
+//                    }
 
                     for (int i = 1; i < fftSize-2; i++) {
   
@@ -1240,7 +1240,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         f.getContentPane().add("Center", capturePlayback);
         f.pack();
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int w = 960;
+        int w = 1000;
         int h = 410;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);

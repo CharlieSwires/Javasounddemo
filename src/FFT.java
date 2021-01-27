@@ -216,15 +216,24 @@ public class FFT {
 
         // original data
         for (int i = 0; i < n; i++) {
-            x[i] = new Complex(10.0*Math.sin(50.0*i*2.0*Math.PI/44100.0)+
-                    30.0*Math.sin(3000.0*i*2.0*Math.PI/44100.0), i/44100.0);
+            x[i] = new Complex(10.0*Math.sin(50.0*i*2.0*Math.PI/44100.0)
+        //+30.0*Math.sin(3000.0*i*2.0*Math.PI/44100.0),
+                    ,0.0);
         }
         //show(x, "x");
 
         // FFT of original data
         Complex[] y = fft(x);
-        for (int i = 0; i < n; i++)
-            if(y[i].abs() > 2000.0)System.out.println("i="+i+" - ampl="+y[i].abs());
+        double max = 0.0;
+        int maxi = 0;
+        for (int i = 0; i < n/2; i++) {
+          if (max < y[i].abs()) {
+              max = y[i].abs();
+              maxi = i;
+          }
+        }
+        System.out.println("f0=44100.0*"+maxi+"/"+n+"="+44100.0*maxi/n);
+
 //        show(y, "y = fft(x)");
 //
 //        // FFT of original data

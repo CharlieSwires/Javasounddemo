@@ -215,14 +215,15 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
      */
     static int bufferLengthInFrames = 0;
     public void createShortEvent(int type, int num) {
-        //        System.out.println("type="+(type==NOTEON)+" num="+num);
-        System.out.println("bufferLengthInFrames="+bufferLengthInFrames);
+        //        //System.out.println("type="+(type==NOTEON)+" num="+num);
+        //System.out.println("bufferLengthInFrames="+bufferLengthInFrames);
+        playback.stop();
         if (bufferLengthInFrames > 0) {       
             double fdest = Math.pow(2, (num-69)/12.0)*440.0;
             double relativeSampleRate = (fdest/f0);
             System.out.println("fdest="+fdest+" f0="+f0);
             AudioFormat format = formatControls.getFormat();
-            System.out.println("getFrameSize="+format.getFrameSize());
+            //System.out.println("getFrameSize="+format.getFrameSize());
             List<Byte> everything = new ArrayList<Byte>();
             int frameSizeInBytes = format.getFrameSize();
             int bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
@@ -238,8 +239,8 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
             }
 
             byte[] audioBytes = new byte[
-                (int) (audioInputStream.getFrameLength() 
-                       * format.getFrameSize())];
+                                         (int) (audioInputStream.getFrameLength() 
+                                                 * format.getFrameSize())];
             try {
                 audioInputStream.read(audioBytes);
             } catch (IOException e) {
@@ -251,15 +252,15 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                 everything.add(b);
             }
 
-//            List<Byte> trimmed = new ArrayList<Byte>();
-//            System.out.println("linesStart="+linesStart+" linesEnd="+linesEnd);
-//            for(int i = linesStart; i < linesEnd;i++) {
-//                trimmed.add(everything.get(i*4));
-//                trimmed.add(everything.get(i*4+1));
-//                trimmed.add(everything.get(i*4+2));
-//                trimmed.add(everything.get(i*4+3));
-//            }
-//            System.out.println("trimmed.size()="+trimmed.size());
+            //            List<Byte> trimmed = new ArrayList<Byte>();
+            //            //System.out.println("linesStart="+linesStart+" linesEnd="+linesEnd);
+            //            for(int i = linesStart; i < linesEnd;i++) {
+            //                trimmed.add(everything.get(i*4));
+            //                trimmed.add(everything.get(i*4+1));
+            //                trimmed.add(everything.get(i*4+2));
+            //                trimmed.add(everything.get(i*4+3));
+            //            }
+            //            //System.out.println("trimmed.size()="+trimmed.size());
             List<Byte> squished = new ArrayList<Byte>();
             double loci =0.0;
             for(; loci < everything.size()/4; loci += relativeSampleRate) {
@@ -276,14 +277,15 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                 data2[i]=squished.get(i);
             }
 
-            System.out.println("data2.length="+data2.length);
+            //System.out.println("data2.length="+data2.length);
+
             if (type==NOTEON) {
                 playback2.start();
             } else {
                 playback2.stop();
             }
         }
-     }
+    }
     /**
      * Write data to the OutputChannel.
      */
@@ -319,54 +321,68 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         }
 
         public void run() {
-            ii = 0;
 
             //            // get an AudioInputStream of the desired format for playback
             AudioFormat format = formatControls.getFormat();
             DataLine.Info info = new DataLine.Info(SourceDataLine.class, 
                     format);
- 
+            int retries = 0;
             // get and open the source data line for playback.
-
-            try {
-                line = (SourceDataLine) AudioSystem.getLine(info);
-                line.open(format, bufSize);
-            } catch (LineUnavailableException ex) { 
-                //                shutDown("Unable to open the line: " + ex);
-                return;
-            }
-
-            // play back the captured audio data
-            int frameSizeInBytes = format.getFrameSize();
-            bufferLengthInFrames = line.getBufferSize() / 8;
-            int bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
-            byte[] data = new byte[bufferLengthInBytes];
-            int numBytesRead = 0;
-
-            // start the source data line
-            line.start();
-
-            while (thread != null) {
+            while (thread != null && retries++ < 5) {
+                ii = 0;
                 try {
-                    if ((numBytesRead = read(data)) == -1) {
+                    line = (SourceDataLine) AudioSystem.getLine(info);
+                    line.open(format, bufSize);
+                } catch (LineUnavailableException ex) { 
+                    shutDown("Unable to open the line: " + ex);
+                    return;
+                }
+
+                // play back the captured audio data
+                int frameSizeInBytes = format.getFrameSize();
+                int bufferLengthInBytes;
+                byte[] data = null;
+                int numBytesRead;
+
+                if (line != null) {
+                    bufferLengthInFrames = line.getBufferSize() / 8;
+                
+                    bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
+                    data = new byte[bufferLengthInBytes];
+                    numBytesRead = 0;
+
+                    // start the source data line
+                    line.start();
+                }
+                while (thread != null && line != null) {
+                    try {
+                        if ((numBytesRead = read(data)) == -1) {
+                            break;
+                        }
+                        int numBytesRemaining = numBytesRead;
+                        while (numBytesRemaining > 0 && line != null && data != null) {
+                            numBytesRemaining -= line.write(data, 0, numBytesRemaining);
+                            retries = 10;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        shutDown("Error during playback: " + e);
                         break;
                     }
-                    int numBytesRemaining = numBytesRead;
-                    while (numBytesRemaining > 0 ) {
-                        numBytesRemaining -= line.write(data, 0, numBytesRemaining);
-                    }
-                } catch (Exception e) {
-                    shutDown("Error during playback: " + e);
-                    break;
                 }
             }
             // we reached the end of the stream.  let the data play out, then
             // stop and close the line.
-            if (thread != null) {
+            if (thread != null && line != null) {
                 line.drain();
             }
-            line.stop();
-            line.close();
+            if (line != null) {
+                line.stop();
+            }
+            if (line != null) {
+                line.close();    
+            }
+
             line = null;
             shutDown(null);
         }
@@ -752,7 +768,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
 
     private void reportStatus(String msg) {
         if ((errStr = msg) != null) {
-            System.out.println(errStr);
+            //System.out.println(errStr);
             samplingGraph.repaint();
         }
     }
@@ -1299,23 +1315,23 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                 } else if (audioInputStream != null && fft) {
                     linesStart = 0;
                     linesEnd = lines.size();
-//                    for (int i = 1; i < lines.size(); i++) {
-//                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
-//                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
-//                            linesStart = i;
-//                            break;
-//                        }
-//                    }
-//                    for (int i = linesEnd-1; i >= linesStart; i--) {
-//                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
-//                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
-//                            linesEnd = i;
-//                            break;
-//                        }
-//                    }
-//                    if (linesEnd == 0) {
-//                        linesEnd = lines.size();
-//                    }
+                    //                    for (int i = 1; i < lines.size(); i++) {
+                    //                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
+                    //                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
+                    //                            linesStart = i;
+                    //                            break;
+                    //                        }
+                    //                    }
+                    //                    for (int i = linesEnd-1; i >= linesStart; i--) {
+                    //                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
+                    //                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
+                    //                            linesEnd = i;
+                    //                            break;
+                    //                        }
+                    //                    }
+                    //                    if (linesEnd == 0) {
+                    //                        linesEnd = lines.size();
+                    //                    }
                     int fftSize=(int)Math.pow(2,(int)(Math.log10((double)(linesEnd - linesStart))/Math.log10(2.0))+1);
                     Complex[] x = new Complex[fftSize];
                     double newDuration = fftSize / lines.size();
@@ -1326,13 +1342,13 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                         } else {
                             x[i] = new Complex((double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0,
                                     0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
-                            //System.out.println(x[i].toString()); 
+                            ////System.out.println(x[i].toString()); 
 
                         }
                     }
                     Complex[] y = FFT.fft(x);
                     Line2D.Double[] fftLines = new Line2D.Double[fftSize];
-                    System.out.println("fftSize="+fftSize);
+                    //System.out.println("fftSize="+fftSize);
                     double min = 8000000000000.0;
                     int mini = (int)Math.round((300.0/44100.0)*fftSize);
                     for (int i = (int)Math.round((300.0/44100.0)*fftSize);
@@ -1342,13 +1358,13 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                             mini = i;
                         }
                     }
-                    System.out.println("min="+min+" f0=44100.0*"+mini+"/"+fftSize+"="+44100.0*mini/fftSize);
+                    //System.out.println("min="+min+" f0=44100.0*"+mini+"/"+fftSize+"="+44100.0*mini/fftSize);
                     f0 =44100.0*mini/fftSize;
                     for (int i = 1; i < fftSize-2; i++) {
 
                         fftLines[i] = new Line2D.Double(w*(i+1)/fftSize,(-h+INFOPAD+2)*y[i+1].abs()/1000+23,
                                 w*(i+2)/fftSize,(-h+INFOPAD+2)*y[i+2].abs()/1000+23);
-                        //System.out.println("x="+w*(i+1)/fftSize+" y="+((-h+INFOPAD+2))*y[i+1].abs()/max+23); 
+                        ////System.out.println("x="+w*(i+1)/fftSize+" y="+((-h+INFOPAD+2))*y[i+1].abs()/max+23); 
 
                     }
                     // .. render sampling graph ..

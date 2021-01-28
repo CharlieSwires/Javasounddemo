@@ -121,6 +121,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
     final int REVERB = 91;
     final int ON = 0, OFF = 1;
     JTable table;
+    Object o = new Object();
 
     FormatControls formatControls = new FormatControls();
     Capture capture = new Capture();
@@ -218,68 +219,69 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         //        //System.out.println("type="+(type==NOTEON)+" num="+num);
         //System.out.println("bufferLengthInFrames="+bufferLengthInFrames);
         playback.stop();
-        if (bufferLengthInFrames > 0) {       
-            double fdest = Math.pow(2, (num-69)/12.0)*440.0;
-            double relativeSampleRate = (fdest/f0);
-            System.out.println("fdest="+fdest+" f0="+f0);
-            AudioFormat format = formatControls.getFormat();
-            //System.out.println("getFrameSize="+format.getFrameSize());
-            List<Byte> everything = new ArrayList<Byte>();
-            int frameSizeInBytes = format.getFrameSize();
-            int bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
-            byte[] data = new byte[bufferLengthInBytes];
-            if (file != null) {
-                createAudioInputStream(file, false);
-            }
-            try {
-                audioInputStream.reset();
-            } catch (IOException e1) {
-                // TODO Auto-generated catch block
-                e1.printStackTrace();
-            }
-
-            byte[] audioBytes = new byte[
-                                         (int) (audioInputStream.getFrameLength() 
-                                                 * format.getFrameSize())];
-            try {
-                audioInputStream.read(audioBytes);
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-
-            for(byte b: audioBytes) {
-                everything.add(b);
-            }
-
-            //            List<Byte> trimmed = new ArrayList<Byte>();
-            //            //System.out.println("linesStart="+linesStart+" linesEnd="+linesEnd);
-            //            for(int i = linesStart; i < linesEnd;i++) {
-            //                trimmed.add(everything.get(i*4));
-            //                trimmed.add(everything.get(i*4+1));
-            //                trimmed.add(everything.get(i*4+2));
-            //                trimmed.add(everything.get(i*4+3));
-            //            }
-            //            //System.out.println("trimmed.size()="+trimmed.size());
-            List<Byte> squished = new ArrayList<Byte>();
-            double loci =0.0;
-            for(; loci < everything.size()/4; loci += relativeSampleRate) {
-                int i = (int)loci * 4;
-                squished.add(everything.get(i));
-                squished.add(everything.get(i+1));
-                squished.add(everything.get(i+2));
-                squished.add(everything.get(i+3));
-
-            }
-
-            data2 = new byte[squished.size()];
-            for (int i = 0; i < squished.size(); i++) {
-                data2[i]=squished.get(i);
-            }
-
-            //System.out.println("data2.length="+data2.length);
-
+        if (bufferLengthInFrames > 0) { 
             if (type==NOTEON) {
+                synchronized(o) {
+                    double fdest = Math.pow(2, (num-69)/12.0)*440.0;
+                    double relativeSampleRate = (fdest/f0);
+                    System.out.println("fdest="+fdest+" f0="+f0);
+                    AudioFormat format = formatControls.getFormat();
+                    //System.out.println("getFrameSize="+format.getFrameSize());
+                    List<Byte> everything = new ArrayList<Byte>();
+                    int frameSizeInBytes = format.getFrameSize();
+                    int bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
+                    byte[] data = new byte[bufferLengthInBytes];
+                    if (file != null) {
+                        createAudioInputStream(file, false);
+                    }
+                    try {
+                        audioInputStream.reset();
+                    } catch (IOException e1) {
+                        // TODO Auto-generated catch block
+                        e1.printStackTrace();
+                    }
+
+                    byte[] audioBytes = new byte[
+                                                 (int) (audioInputStream.getFrameLength() 
+                                                         * format.getFrameSize())];
+                    try {
+                        audioInputStream.read(audioBytes);
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+
+                    for(byte b: audioBytes) {
+                        everything.add(b);
+                    }
+
+                    //            List<Byte> trimmed = new ArrayList<Byte>();
+                    //            //System.out.println("linesStart="+linesStart+" linesEnd="+linesEnd);
+                    //            for(int i = linesStart; i < linesEnd;i++) {
+                    //                trimmed.add(everything.get(i*4));
+                    //                trimmed.add(everything.get(i*4+1));
+                    //                trimmed.add(everything.get(i*4+2));
+                    //                trimmed.add(everything.get(i*4+3));
+                    //            }
+                    //            //System.out.println("trimmed.size()="+trimmed.size());
+                    List<Byte> squished = new ArrayList<Byte>();
+                    double loci =0.0;
+                    for(; loci < everything.size()/4; loci += relativeSampleRate) {
+                        int i = (int)loci * 4;
+                        squished.add(everything.get(i));
+                        squished.add(everything.get(i+1));
+                        squished.add(everything.get(i+2));
+                        squished.add(everything.get(i+3));
+
+                    }
+
+                    data2 = new byte[squished.size()];
+                    for (int i = 0; i < squished.size(); i++) {
+                        data2[i]=squished.get(i);
+                    }
+
+                    //System.out.println("data2.length="+data2.length);
+                }
                 playback2.start();
             } else {
                 playback2.stop();
@@ -346,7 +348,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
 
                 if (line != null) {
                     bufferLengthInFrames = line.getBufferSize() / 8;
-                
+
                     bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
                     data = new byte[bufferLengthInBytes];
                     numBytesRead = 0;

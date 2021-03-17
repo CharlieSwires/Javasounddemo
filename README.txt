@@ -30,7 +30,8 @@ Capture & Playback :
     A Capture/Playback sample.  Record audio in different formats
     and then playback the recorded audio.  The captured audio can 
     be saved either as a WAVE, AU or AIFF.  Or load an audio file
-    for streaming playback.
+    for streaming playback. Record/Load sound press Time -> FFT
+    then press Play and then you can use the keyboard.
 
 
 Midi Synthesizer :

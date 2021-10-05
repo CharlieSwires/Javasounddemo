@@ -14,7 +14,7 @@ public class FftLong extends JPanel{
      */
     private static final long serialVersionUID = 4007747056706891244L;
     static JButton go = new JButton("go");
-    static JFrame fftjfrm = new JFrame("Sliding Fourier Transform");
+    static JFrame fftjfrm = new JFrame("Sliding Fast Fourier Transform");
     static int width = 1000;
     static int height = 65536/100;
     boolean start = false;

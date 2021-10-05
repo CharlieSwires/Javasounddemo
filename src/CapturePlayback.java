@@ -59,7 +59,6 @@ import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Vector;
@@ -1339,11 +1338,9 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                     double newDuration = fftSize / lines.size();
                     for (int i = 0, j=linesStart; i < fftSize; i++,j++) {
                         if (j >= linesEnd-1) {
-                            x[i] = new Complex((double)(((Line2D.Double) lines.get(linesEnd-1)).getP1()).getY()-23.0,
-                                    0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
+                            x[i] = new Complex( (double)(((Line2D.Double) lines.get(linesEnd-1)).getP1()).getY()-23.0,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
                         } else {
-                            x[i] = new Complex((double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0,
-                                    0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
+                            x[i] = new Complex( (double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
                             ////System.out.println(x[i].toString()); 
 
                         }
@@ -1384,9 +1381,13 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                     }
 
                     g2.setColor(Color.WHITE);
-                    for (int i = 1; i < fftSize-2; i++) {
-                        g2.draw((Line2D) fftLines[i]);
+                    for (int i = 1; i < linesEnd; i++) {
+                        g2.draw((Line2D) lines.get(i));
                     }
+                    
+                    FftLong fftlong = new FftLong(lines);
+                    fftlong.repaint();
+                    fftlong.setVisible(true);
                 }
             }
         }

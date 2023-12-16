@@ -40,7 +40,7 @@ public class FftLong extends JPanel{
         int width = getWidth();
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, width, height);
-        int fftSize=(int)Math.pow(2,(int)15);
+        int fftSize=(int)Math.pow(2,(int)11);
         for (int m= 0; m < linesEnd; m+=1) {
             linesStart = m;
 
@@ -48,24 +48,25 @@ public class FftLong extends JPanel{
             double tv = 0.0;
             for (int i = 0, j=linesStart; i < fftSize; i++,j++) {
                 if (j >= linesEnd-1) {
-                    x[i] = new Complex((double)tv,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
+                    x[i] = new Complex((double)tv, i / 44100.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
                 } else {
-                    x[i] = new Complex((double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
+                    x[i] = new Complex((double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0, i / 44100.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
                     ////System.out.println(x[i].toString()); 
                     tv = (((Line2D.Double) lines.get(j)).getP1()).getY()-23.0;
                 }
             }
             Complex[] y = FFT.fft(x);
-            for (int k = 0; k < fftSize; k+= 100) {
+            for (int k = 0; k < fftSize; k+= 1) {
                 double sum = 0.0;
-                for (int n= 0; n< 100 && (k+n)<fftSize;n++) {
-                    sum += y[k+n].abs();
-                }
-                double ave = (sum / 100.0);
+                //for (int n= 0; n< 100 && (k+n)<fftSize;n++) {
+                    sum += y[k].abs();
+                //}
+                double ave = (sum);
                 ave = ave < 256.0 ? ave : 255.0;
+                ave = ave < 0.0 ? 0.0 : ave;
                 Color c = new Color(((int)(ave)),((int)(ave)),((int)(ave)));
                 g.setColor(c);
-                g.drawLine(m/1, k/100, m/1, k/100+1);
+                g.drawLine(m/1, k/4, m/1, k/4+1);
                 
             }
         }

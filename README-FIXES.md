@@ -36,4 +36,36 @@ Validation: Java 17 compilation and headless checks covering 8/22.05/44.1/48 kHz
 mono/stereo, a stronger second harmonic, unsigned 8-bit, big-endian PCM, silence,
 empty data, interpolation, image bounds, explicit button and repeated FFT repaint.
 Audible playback and live microphone recording require verification on your PC.
-Original demo deprecation warnings remain (including its legacy applet).
+The Java 17 update removes deprecated applet, boxed-constructor and Window.show calls.
+Legacy raw collection warnings remain.
+
+## Bash / Java 17 update
+
+From Git Bash in the project root:
+
+```bash
+bash build.sh
+bash test.sh
+bash run-sampler.sh
+# Full tabbed desktop application:
+java -jar JavaSoundDemo.jar
+```
+
+Install/use a JDK 17 or newer. The build explicitly targets Java 17 with
+--release 17 and UTF-8. JAVA_HOME, when set, selects the JDK rather than PATH.
+The build cleans only the generated build directory and recreates the JAR.
+Tests use the same release target and are compiled after packaging, so they
+are not included in the application JAR.
+
+The old JavaSoundApplet class is now a desktop launcher that delegates to
+JavaSound.main; it no longer extends JApplet. Existing HTML applet pages are
+historical and cannot launch this desktop build. Compiling for Java 8 would
+not restore browser applet support. Use the desktop application instead.
+
+Deprecated boxed constructors and Window.show calls have been replaced.
+Complex.hashCode retains its original array hash behaviour without the varargs
+warning. Older raw Vector collections still produce an unchecked-operation
+note; these have not been hidden by warning suppression.
+
+In Eclipse set the project JRE and compiler compliance to Java 17, refresh,
+then clean/rebuild. Do not rely on old compiled classes in bin.

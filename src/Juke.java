@@ -762,7 +762,7 @@ public class Juke extends JPanel implements Runnable, LineListener, MetaEventLis
                 public int getRowCount() { return sounds.size();}
                 public Object getValueAt(int row, int col) { 
                     if (col == 0) {
-                        return new Integer(row);
+                        return Integer.valueOf(row);
                     } else if (col == 1) {
                         Object object = sounds.get(row);
                         if (object instanceof File) {

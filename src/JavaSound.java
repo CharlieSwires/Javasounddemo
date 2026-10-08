@@ -60,7 +60,7 @@ public class JavaSound extends JPanel implements ChangeListener, Runnable {
 
         JMenuBar menuBar = new JMenuBar();
        
-        if (JavaSoundApplet.applet == null) {
+        {
             JMenu fileMenu = (JMenu) menuBar.add(new JMenu("File"));
             JMenuItem item = (JMenuItem) fileMenu.add(new JMenuItem("Exit"));
             item.addActionListener(new ActionListener() {
@@ -68,7 +68,7 @@ public class JavaSound extends JPanel implements ChangeListener, Runnable {
             });
         }
         JMenu options = (JMenu) menuBar.add(new JMenu("Options"));
-        JMenuItem item = (JMenuItem) options.add(new JMenuItem("Applet Info"));
+        JMenuItem item = (JMenuItem) options.add(new JMenuItem("Application Info"));
         item.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) { showInfoDialog(); }
         });
@@ -116,22 +116,12 @@ public class JavaSound extends JPanel implements ChangeListener, Runnable {
 
 
     public static void showInfoDialog() {
-        final String msg = 
-            "When running the Java Sound demo as an applet these permissions\n" +
-            "are necessary in order to load/save files and record audio :  \n\n"+
-            "grant { \n" +
-            "  permission java.io.FilePermission \"<<ALL FILES>>\", \"read, write\";\n" +
-            "  permission javax.sound.sampled.AudioPermission \"record\"; \n" +
-            "  permission java.util.PropertyPermission \"user.dir\", \"read\";\n"+
-            "}; \n\n" +
-            "The permissions need to be added to the .java.policy file.";
-        new Thread(new Runnable() {
-            public void run() {
-                JOptionPane.showMessageDialog(null, msg, "Applet Info", JOptionPane.INFORMATION_MESSAGE);
-            }
-        }).start();
+        final String msg = "Java Sound desktop demo (Java 17).\n"
+            + "Load/save samples and record using your computer's audio devices.\n"
+            + "Use Capture/Playback for the sample keyboard and Sliding FFT display.";
+        javax.swing.SwingUtilities.invokeLater(() ->
+            JOptionPane.showMessageDialog(null, msg, "Application Info", JOptionPane.INFORMATION_MESSAGE));
     }
-
 
 
     /**
@@ -176,7 +166,7 @@ public class JavaSound extends JPanel implements ChangeListener, Runnable {
         String media = "./audio";
         if (args.length > 0) {
             File file = new File(args[0]);
-            if (file == null && !file.isDirectory()) {
+            if (!file.isDirectory()) {
                 System.out.println("usage: java JavaSound audioDirectory");
             } else {
                 media = args[0];

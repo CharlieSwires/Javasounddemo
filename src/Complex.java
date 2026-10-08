@@ -148,8 +148,8 @@ public class Complex {
     // See Section 3.3.
     public int hashCode() {
         Double[] o = new Double[2];
-        o[0] = new Double(re); o[1] = new Double(im);
-        return Objects.hash(o);
+        o[0] = Double.valueOf(re); o[1] = Double.valueOf(im);
+        return Objects.hash((Object[]) o);
     }
 
     // sample client for testing

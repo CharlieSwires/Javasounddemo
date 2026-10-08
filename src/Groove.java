@@ -429,7 +429,7 @@ public class Groove extends JPanel implements ActionListener, ControlContext, Me
         int h = 440;
         f.setLocation(screenSize.width/2 - w/2, screenSize.height/2 - h/2);
         f.setSize(w, h);
-        f.show();
+        f.setVisible(true);
         groove.open();
     }
 } 

@@ -131,7 +131,9 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
     AudioInputStream audioInputStream2;
     SamplingGraph samplingGraph;
 
-    JButton playB, captB, pausB, loadB, fftB;
+    JButton playB, captB, pausB, loadB, fftB, slidingFftB;
+    volatile SampleAudio sample;
+    JFrame slidingFrame;
     JButton auB, aiffB, waveB;
     JTextField textField;
 
@@ -174,6 +176,7 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         pausB = addButton("Pause", buttonsPanel, false);
         loadB = addButton("Load...", buttonsPanel, true);
         fftB = addButton("Time", buttonsPanel, true);
+        slidingFftB = addButton("Sliding FFT...", buttonsPanel, true);
         p2.add(buttonsPanel);
 
         JPanel samplingPanel = new JPanel(new BorderLayout());
@@ -203,204 +206,104 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         p1.add(p2);
         add(p1);
     }
-    static byte[] data2;
-    /**
-     * given 120 bpm:
-     *   (120 bpm) / (60 seconds per minute) = 2 beats per second
-     *   2 / 1000 beats per millisecond
-     *   (2 * resolution) ticks per second
-     *   (2 * resolution)/1000 ticks per millisecond, or 
-     *      (resolution / 500) ticks per millisecond
-     *   ticks = milliseconds * resolution / 500
-     */
-    static int bufferLengthInFrames = 0;
+    static int bufferLengthInFrames;
     public void createShortEvent(int type, int num) {
-        //        //System.out.println("type="+(type==NOTEON)+" num="+num);
-        //System.out.println("bufferLengthInFrames="+bufferLengthInFrames);
+        playback2.stop();
+        if (type != NOTEON) return;
+        SampleAudio current = sample;
+        if (current == null || current.pitch <= 0) {
+            reportStatus("Load or record a pitched sample first (silence/noise has no reliable fundamental).");
+            return;
+        }
         playback.stop();
-        if (bufferLengthInFrames > 0) { 
-            if (type==NOTEON) {
-                synchronized(o) {
-                    double fdest = Math.pow(2, (num-69)/12.0)*440.0;
-                    double relativeSampleRate = (fdest/f0);
-                    System.out.println("fdest="+fdest+" f0="+f0);
-                    AudioFormat format = formatControls.getFormat();
-                    //System.out.println("getFrameSize="+format.getFrameSize());
-                    List<Byte> everything = new ArrayList<Byte>();
-                    int frameSizeInBytes = format.getFrameSize();
-                    int bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
-                    byte[] data = new byte[bufferLengthInBytes];
-                    if (file != null) {
-                        createAudioInputStream(file, false);
-                    }
-                    try {
-                        audioInputStream.reset();
-                    } catch (IOException e1) {
-                        // TODO Auto-generated catch block
-                        e1.printStackTrace();
-                    }
-
-                    byte[] audioBytes = new byte[
-                                                 (int) (audioInputStream.getFrameLength() 
-                                                         * format.getFrameSize())];
-                    try {
-                        audioInputStream.read(audioBytes);
-                    } catch (IOException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
-                    }
-
-                    for(byte b: audioBytes) {
-                        everything.add(b);
-                    }
-
-                    //            List<Byte> trimmed = new ArrayList<Byte>();
-                    //            //System.out.println("linesStart="+linesStart+" linesEnd="+linesEnd);
-                    //            for(int i = linesStart; i < linesEnd;i++) {
-                    //                trimmed.add(everything.get(i*4));
-                    //                trimmed.add(everything.get(i*4+1));
-                    //                trimmed.add(everything.get(i*4+2));
-                    //                trimmed.add(everything.get(i*4+3));
-                    //            }
-                    //            //System.out.println("trimmed.size()="+trimmed.size());
-                    List<Byte> squished = new ArrayList<Byte>();
-                    double loci =0.0;
-                    for(; loci < everything.size()/4; loci += relativeSampleRate) {
-                        int i = (int)loci * 4;
-                        squished.add(everything.get(i));
-                        squished.add(everything.get(i+1));
-                        squished.add(everything.get(i+2));
-                        squished.add(everything.get(i+3));
-
-                    }
-
-                    data2 = new byte[squished.size()];
-                    for (int i = 0; i < squished.size(); i++) {
-                        data2[i]=squished.get(i);
-                    }
-
-                    //System.out.println("data2.length="+data2.length);
-                }
-                playback2.start();
-            } else {
-                playback2.stop();
-            }
-        }
+        samplingGraph.stop();
+        playB.setText("Play");
+        captB.setEnabled(true);
+        pausB.setEnabled(false);
+        playback2.start(current, 440.0 * Math.pow(2, (num - 69) / 12.0) / current.pitch);
     }
-    /**
-     * Write data to the OutputChannel.
-     */
-    public class Playback2 implements Runnable {
 
-        SourceDataLine line;
-        Thread thread;
-        int ii = 0;
-
-        public void start() {
-            errStr = null;
-            thread = new Thread(this);
-            thread.setName("Playback2");
-            thread.start();
-        }
-
-        public void stop() {
+    /** One monophonic voice; each voice owns its line and cancellation state. */
+    public class Playback2 {
+        volatile Thread thread;
+        volatile SourceDataLine line;
+        public synchronized void stop() {
             thread = null;
+            SourceDataLine old = line;
+            line = null;
+            if (old != null) { old.stop(); old.flush(); old.close(); }
         }
-
-        private void shutDown(String message) {
-            if ((errStr = message) != null) {
-                System.err.println(errStr);
-                samplingGraph.repaint();
-            }
-            if (thread != null) {
-                thread = null;
-                samplingGraph.stop();
-                captB.setEnabled(true);
-                pausB.setEnabled(false);
-                playB.setText("Play");
-            } 
-        }
-
-        public void run() {
-
-            //            // get an AudioInputStream of the desired format for playback
-            AudioFormat format = formatControls.getFormat();
-            DataLine.Info info = new DataLine.Info(SourceDataLine.class, 
-                    format);
-            int retries = 0;
-            // get and open the source data line for playback.
-            while (thread != null && retries++ < 5) {
-                ii = 0;
+        public synchronized void start(final SampleAudio audio, final double ratio) {
+            stop();
+            Thread voice = new Thread(() -> {
+                Thread self = Thread.currentThread();
+                SourceDataLine output = null;
                 try {
-                    line = (SourceDataLine) AudioSystem.getLine(info);
-                    line.open(format, bufSize);
-                } catch (LineUnavailableException ex) { 
-                    shutDown("Unable to open the line: " + ex);
-                    return;
-                }
-
-                // play back the captured audio data
-                int frameSizeInBytes = format.getFrameSize();
-                int bufferLengthInBytes;
-                byte[] data = null;
-                int numBytesRead;
-
-                if (line != null) {
-                    bufferLengthInFrames = line.getBufferSize() / 8;
-
-                    bufferLengthInBytes = bufferLengthInFrames * frameSizeInBytes;
-                    data = new byte[bufferLengthInBytes];
-                    numBytesRead = 0;
-
-                    // start the source data line
-                    line.start();
-                }
-                while (thread != null && line != null) {
-                    try {
-                        if ((numBytesRead = read(data)) == -1) {
-                            break;
+                    output = AudioSystem.getSourceDataLine(audio.format);
+                    synchronized (Playback2.this) {
+                        if (thread != self) return;
+                        output.open(audio.format, bufSize);
+                        line = output;
+                    }
+                    output.start();
+                    int frameSize = audio.format.getFrameSize();
+                    byte[] block = new byte[(4096 / frameSize) * frameSize];
+                    double position = 0;
+                    while (thread == self && position < audio.frames()) {
+                        int count = 0;
+                        while (count + frameSize <= block.length && position < audio.frames()) {
+                            audio.interpolate(position, block, count);
+                            count += frameSize;
+                            position += ratio;
                         }
-                        int numBytesRemaining = numBytesRead;
-                        while (numBytesRemaining > 0 && line != null && data != null) {
-                            numBytesRemaining -= line.write(data, 0, numBytesRemaining);
-                            retries = 10;
+                        int offset = 0;
+                        while (thread == self && offset < count) {
+                            int written = output.write(block, offset, count - offset);
+                            if (written <= 0) break;
+                            offset += written;
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        shutDown("Error during playback: " + e);
-                        break;
+                    }
+                    if (thread == self) output.drain();
+                } catch (Exception ex) {
+                    if (thread == self) javax.swing.SwingUtilities.invokeLater(() -> reportStatus("Sample playback: " + ex));
+                } finally {
+                    if (output != null) output.close();
+                    synchronized (Playback2.this) {
+                        if (thread == self) { thread = null; line = null; }
                     }
                 }
-            }
-            // we reached the end of the stream.  let the data play out, then
-            // stop and close the line.
-            if (thread != null && line != null) {
-                line.drain();
-            }
-            if (line != null) {
-                line.stop();
-            }
-            if (line != null) {
-                line.close();    
-            }
-
-            line = null;
-            shutDown(null);
-        }
-
-        private int read(byte[] data) {
-            if (ii< data2.length) {
-                int i=0;
-                for (; i< data.length && ii< data2.length; i++,ii++) {
-                    data[i] = data2[ii];
-                }
-                return i;
-
-            } else {
-                return -1;
-            }
+            }, "Sample keyboard voice");
+            thread = voice;
+            voice.start();
         }
     }
+
+    private void showSlidingFFT() {
+        final SampleAudio current = sample;
+        if (current == null) { reportStatus("Load or record a sample first."); return; }
+        if (slidingFrame != null && slidingFrame.isDisplayable()) {
+            slidingFrame.toFront(); return;
+        }
+        slidingFrame = new JFrame("Sliding FFT — " + fileName);
+        slidingFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        final JFrame frame = slidingFrame;
+        frame.add(new JLabel("Calculating sliding FFT...", JLabel.CENTER));
+        frame.setSize(1000, 600);
+        frame.setLocationRelativeTo(this);
+        frame.setVisible(true);
+        new javax.swing.SwingWorker<java.awt.image.BufferedImage, Void>() {
+            protected java.awt.image.BufferedImage doInBackground() { return FftLong.render(current); }
+            protected void done() {
+                if (!frame.isDisplayable()) return;
+                try {
+                    frame.getContentPane().removeAll();
+                    frame.add(new FftLong(get()));
+                    frame.revalidate(); frame.repaint();
+                } catch (Exception ex) { frame.dispose(); reportStatus("FFT: " + ex); }
+            }
+        }.execute();
+    }
+
     /**
      * Stores MidiChannel information.
      */
@@ -593,6 +496,8 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
 
 
     public void close() {
+        playback2.stop();
+        if (slidingFrame != null) slidingFrame.dispose();
         if (playback.thread != null) {
             playB.doClick(0);
         }
@@ -636,6 +541,8 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
         } else if (obj.equals(captB)) {
             if (captB.getText().startsWith("Record")) {
                 file = null;
+                sample = null;
+                playback2.stop();
                 capture.start();
                 fileName = "untitled";
                 samplingGraph.start();
@@ -707,14 +614,23 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
             } catch (Exception ex) { 
                 ex.printStackTrace();
             } 
+        } else if (obj.equals(slidingFftB)) {
+            showSlidingFFT();
         }else if (obj.equals(fftB)) {
             fft = !fft;
             fftB.setText(fft ? "FFT" : "Time");
+            samplingGraph.repaint();
         }
     }
 
 
     public void createAudioInputStream(File file, boolean updateComponents) {
+        if (!updateComponents && sample != null) {
+            SampleAudio current = sample;
+            audioInputStream = new AudioInputStream(new ByteArrayInputStream(current.bytes), current.format, current.frames());
+            return;
+        }
+        playback2.stop();
         if (file != null && file.isFile()) {
             try {
                 this.file = file;
@@ -1179,80 +1095,31 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
 
 
         public SamplingGraph() {
+            setPreferredSize(new Dimension(504, 160));
             setBackground(new Color(20, 20, 20));
         }
 
 
         public void createWaveForm(byte[] audioBytes) {
 
-            lines.removeAllElements();  // clear the old vector
-
-            AudioFormat format = audioInputStream.getFormat();
-            if (audioBytes == null) {
-                try {
-                    audioBytes = new byte[
-                                          (int) (audioInputStream.getFrameLength() 
-                                                  * format.getFrameSize())];
-                    audioInputStream.read(audioBytes);
-                } catch (Exception ex) { 
-                    reportStatus(ex.toString());
-                    return; 
+            try {
+                AudioInputStream source = audioBytes == null ? audioInputStream
+                    : new AudioInputStream(new ByteArrayInputStream(audioBytes), audioInputStream.getFormat(),
+                        audioBytes.length / audioInputStream.getFormat().getFrameSize());
+                SampleAudio loaded = SampleAudio.read(source);
+                sample = loaded;
+                f0 = loaded.pitch;
+                // A resettable stream keeps normal playback/save independent of analysis.
+                audioInputStream = new AudioInputStream(new ByteArrayInputStream(loaded.bytes), loaded.format, loaded.frames());
+                formatControls.setFormat(loaded.format);
+                lines.removeAllElements();
+                int w = Math.max(1, getWidth()), h = Math.max(1, getHeight() - 15);
+                for (int x = 0; x < w && loaded.mono.length > 0; x++) {
+                    int index = (int)((long)x * loaded.mono.length / w);
+                    double y = h * (0.5 - loaded.mono[index] * 0.45);
+                    lines.add(new Line2D.Double(x, h / 2.0, x, y));
                 }
-            }
-
-            Dimension d = getSize();
-            int w = d.width;
-            int h = d.height-15;
-            int[] audioData = null;
-            if (format.getSampleSizeInBits() == 16) {
-                int nlengthInSamples = audioBytes.length / 2;
-                audioData = new int[nlengthInSamples];
-                if (format.isBigEndian()) {
-                    for (int i = 0; i < nlengthInSamples; i++) {
-                        /* First byte is MSB (high order) */
-                        int MSB = (int) audioBytes[2*i];
-                        /* Second byte is LSB (low order) */
-                        int LSB = (int) audioBytes[2*i+1];
-                        audioData[i] = MSB << 8 | (255 & LSB);
-                    }
-                } else {
-                    for (int i = 0; i < nlengthInSamples; i++) {
-                        /* First byte is LSB (low order) */
-                        int LSB = (int) audioBytes[2*i];
-                        /* Second byte is MSB (high order) */
-                        int MSB = (int) audioBytes[2*i+1];
-                        audioData[i] = MSB << 8 | (255 & LSB);
-                    }
-                }
-            } else if (format.getSampleSizeInBits() == 8) {
-                int nlengthInSamples = audioBytes.length;
-                audioData = new int[nlengthInSamples];
-                if (format.getEncoding().toString().startsWith("PCM_SIGN")) {
-                    for (int i = 0; i < audioBytes.length; i++) {
-                        audioData[i] = audioBytes[i];
-                    }
-                } else {
-                    for (int i = 0; i < audioBytes.length; i++) {
-                        audioData[i] = audioBytes[i] - 128;
-                    }
-                }
-            }
-
-            int frames_per_pixel = audioBytes.length / format.getFrameSize()/w;
-            byte my_byte = 0;
-            double y_last = 0;
-            int numChannels = format.getChannels();
-            for (double x = 0; x < w && audioData != null; x++) {
-                int idx = (int) (frames_per_pixel * numChannels * x);
-                if (format.getSampleSizeInBits() == 8) {
-                    my_byte = (byte) audioData[idx];
-                } else {
-                    my_byte = (byte) (128 * audioData[idx] / 32768 );
-                }
-                double y_new = (double) (h * (128 - my_byte) / 256);
-                lines.add(new Line2D.Double(x, y_last, x, y_new));
-                y_last = y_new;
-            }
+            } catch (Exception ex) { sample = null; reportStatus("Sample analysis: " + ex); return; }
 
             repaint();
         }
@@ -1314,80 +1181,20 @@ public class CapturePlayback extends JPanel implements ActionListener, ControlCo
                         g2.draw(new Line2D.Double(loc, 0, loc, h-INFOPAD-2));
                     }
                 } else if (audioInputStream != null && fft) {
-                    linesStart = 0;
-                    linesEnd = lines.size();
-                    //                    for (int i = 1; i < lines.size(); i++) {
-                    //                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
-                    //                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
-                    //                            linesStart = i;
-                    //                            break;
-                    //                        }
-                    //                    }
-                    //                    for (int i = linesEnd-1; i >= linesStart; i--) {
-                    //                        if ((((Line2D.Double) lines.get(i)).getP1()).getY() > 25.0 ||
-                    //                                (((Line2D.Double) lines.get(i)).getP1()).getY() < 21.0) {
-                    //                            linesEnd = i;
-                    //                            break;
-                    //                        }
-                    //                    }
-                    //                    if (linesEnd == 0) {
-                    //                        linesEnd = lines.size();
-                    //                    }
-                    int fftSize=(int)Math.pow(2,(int)(Math.log10((double)(linesEnd - linesStart))/Math.log10(2.0))+1);
-                    Complex[] x = new Complex[fftSize];
-                    double newDuration = fftSize / lines.size();
-                    for (int i = 0, j=linesStart; i < fftSize; i++,j++) {
-                        if (j >= linesEnd-1) {
-                            x[i] = new Complex( (double)(((Line2D.Double) lines.get(linesEnd-1)).getP1()).getY()-23.0,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(linesEnd)).getP1()).getX());
-                        } else {
-                            x[i] = new Complex( (double)(((Line2D.Double) lines.get(j)).getP1()).getY()-23.0,0.0);//newDuration*i/(linesEnd-linesStart));//(double)(((Line2D.Double) lines.get(i+linesStart)).getP1()).getX());
-                            ////System.out.println(x[i].toString()); 
-
+                    SampleAudio current = sample;
+                    if (current != null) {
+                        double[] spectrum = current.spectrum;
+                        double max = 1e-12;
+                        for (double v : spectrum) max = Math.max(max, v);
+                        g2.setColor(Color.RED);
+                        for (int i = 1; i < spectrum.length; i++) {
+                            g2.draw(new Line2D.Double((i-1.0)*w/spectrum.length,
+                                h-INFOPAD-spectrum[i-1]/max*(h-INFOPAD),
+                                (double)i*w/spectrum.length, h-INFOPAD-spectrum[i]/max*(h-INFOPAD)));
                         }
+                        g2.setColor(Color.WHITE);
+                        g2.drawString(String.format("Fundamental: %.1f Hz; frequency 0–%.0f Hz", current.pitch, current.format.getSampleRate()/2), 5, 14);
                     }
-                    Complex[] y = FFT.fft(x);
-                    Line2D.Double[] fftLines = new Line2D.Double[fftSize];
-                    //System.out.println("fftSize="+fftSize);
-                    double min = 8000000000000.0;
-                    int mini = (int)Math.round((300.0/44100.0)*fftSize);
-                    for (int i = (int)Math.round((300.0/44100.0)*fftSize);
-                            i < (int)Math.round((600.0/44100.0)*fftSize); i++) {
-                        if (min > y[i].abs()) {
-                            min = y[i].abs();
-                            mini = i;
-                        }
-                    }
-                    //System.out.println("min="+min+" f0=44100.0*"+mini+"/"+fftSize+"="+44100.0*mini/fftSize);
-                    f0 =44100.0*mini/fftSize;
-                    for (int i = 1; i < fftSize-2; i++) {
-
-                        fftLines[i] = new Line2D.Double(w*(i+1)/fftSize,(-h+INFOPAD+2)*y[i+1].abs()/1000+23,
-                                w*(i+2)/fftSize,(-h+INFOPAD+2)*y[i+2].abs()/1000+23);
-                        ////System.out.println("x="+w*(i+1)/fftSize+" y="+((-h+INFOPAD+2))*y[i+1].abs()/max+23); 
-
-                    }
-                    // .. render sampling graph ..
-                    g2.setColor(Color.RED);
-                    for (int i = 1; i < fftSize-2; i++) {
-                        g2.draw((Line2D) fftLines[i]);
-                    }
-                    fftLines = new Line2D.Double[fftSize];
-                    for (int i = 1; i < fftSize-2; i++) {
-
-                        fftLines[i] = new Line2D.Double(w*(i+1)/fftSize,(-h+INFOPAD+2)*x[i+1].abs()/30+23,
-                                w*(i+2)/fftSize,(-h+INFOPAD+2)*x[i+2].abs()/30+23);
-                        //Sxstem.out.println("x="+w*(i+1)/fftSize+" x="+((-h+INFOPAD+2))*x[i+1].abs()/max+23); 
-
-                    }
-
-                    g2.setColor(Color.WHITE);
-                    for (int i = 1; i < linesEnd; i++) {
-                        g2.draw((Line2D) lines.get(i));
-                    }
-                    
-                    FftLong fftlong = new FftLong(lines);
-                    fftlong.repaint();
-                    fftlong.setVisible(true);
                 }
             }
         }
